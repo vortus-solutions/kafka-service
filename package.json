@@ -1,6 +1,6 @@
 {
     "name": "@vortus-solutions/kafka-service",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A robust Kafka service client for Node.js applications",
     "main": "lib/index.js",
     "files": [
