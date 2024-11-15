@@ -1,0 +1,29 @@
+# Source
+src/
+
+# Tests
+__tests__/
+coverage/
+*.test.js
+
+# Config files
+.babelrc
+.eslintrc.json
+.prettierrc
+jest.config.js
+
+# Development files
+.git*
+.editorconfig
+.travis.yml
+.circleci/
+docs/
+examples/
+
+# Logs
+logs/
+*.log
+
+# IDE specific files
+.idea/
+.vscode/
