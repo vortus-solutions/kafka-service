@@ -1,8 +1,10 @@
-const KafkaService = require('./lib/index.js');
+const KafkaService = require('../src/index');
 
 async function main() {
     const kafka = new KafkaService({
-        retryAttempts: 5,
+        kafka: {
+            requestTimeout: 25000,
+        },
     });
 
     // Event listeners
@@ -34,6 +36,7 @@ async function main() {
             topics: ['test-topic'],
             fromBeginning: true
         });
+
         await kafka.consumeEach(async ({ topic, partition, message, heartbeat }) => {
             console.log({
                 topic,
@@ -72,7 +75,7 @@ async function main() {
         process.on('SIGTERM', async () => {
             console.log('Shutting down...');
             await kafka.disconnect();
-            process.exit(0);
+            throw new Error('Shutdown complete');
         });
     } catch (error) {
         console.error('Error:', error);

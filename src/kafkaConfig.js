@@ -11,43 +11,38 @@ const DEFAULT_CONFIG = {
         connectionTimeout: 3000,
         requestTimeout: 30000,
         enforceRequestTimeout: true,
-        maxInFlightRequests: 10,
+        logLevel: logLevel.INFO,
         retry: {
             initialRetryTime: 300,
             maxRetryTime: 30000,
             retries: 8,
             factor: 0.2,
         },
-        logLevel: logLevel.INFO,
     },
     producer: {
         createPartitioner: Partitioners.DefaultPartitioner,
         allowAutoTopicCreation: false,
         transactionTimeout: 30000,
-        maxInFlightRequests: 5,
-        idempotent: true,
         compression: CompressionTypes.GZIP,
-        batchSize: 16384,
-        acks: -1,
-        timeout: 30000,
+        // maxInFlightRequests: 5,
+        // idempotent: true,
     },
     consumer: {
         groupId: 'default-consumer-group',
         allowAutoTopicCreation: false,
         maxInFlightRequests: 20,
-        sessionTimeout: 60000,
-        heartbeatInterval: 3000,
         maxBytes: 10485760,
+        sessionTimeout: 60000,
+        heartbeatInterval: 30000,
         maxWaitTimeInMs: 5000,
-        retry: {
-            initialRetryTime: 100,
-            maxRetryTime: 30000,
-            retries: 8,
-            factor: 0.2,
-        },
         autoCommit: true,
         autoCommitInterval: 5000,
-        autoOffsetReset: 'latest',
+        retry: {
+            initialRetryTime: 100,
+            retries: 8,
+            maxRetryTime: 30000,
+            factor: 0.2,
+        },
     },
 };
 
@@ -73,8 +68,6 @@ const ENV_MAPPING = {
         'compression',
         (v) => CompressionTypes[v] || CompressionTypes.GZIP,
     ],
-    KAFKA_PRODUCER_BATCH_SIZE: ['producer', 'batchSize', parseInt],
-    KAFKA_PRODUCER_ACKS: ['producer', 'acks', parseInt],
 
     KAFKA_CONSUMER_GROUP_ID: ['consumer', 'groupId'],
     KAFKA_CONSUMER_MAX_BYTES: ['consumer', 'maxBytes', parseInt],
@@ -83,7 +76,6 @@ const ENV_MAPPING = {
     KAFKA_CONSUMER_HEARTBEAT_INTERVAL: ['consumer', 'heartbeatInterval', parseInt],
     KAFKA_CONSUMER_AUTO_COMMIT: ['consumer', 'autoCommit', (v) => v === 'true'],
     KAFKA_CONSUMER_AUTO_COMMIT_INTERVAL: ['consumer', 'autoCommitInterval', parseInt],
-    KAFKA_CONSUMER_AUTO_OFFSET_RESET: ['consumer', 'autoOffsetReset'],
 };
 
 module.exports = {
