@@ -4,13 +4,35 @@ const { Kafka, CompressionTypes } = require('kafkajs');
 const EventEmitter = require('events');
 const { DEFAULT_CONFIG, ENV_MAPPING } = require('./kafkaConfig');
 
+/**
+ * @class KafkaService
+ * @extends EventEmitter
+ * @description A service class for managing Kafka producer and consumer operations with built-in error handling and health monitoring
+ * 
+ * @fires KafkaService#producer.connected
+ * @fires KafkaService#producer.disconnected
+ * @fires KafkaService#producer.ready
+ * @fires KafkaService#consumer.connected
+ * @fires KafkaService#consumer.disconnected
+ * @fires KafkaService#consumer.ready
+ * @fires KafkaService#consumer.subscribed
+ * @fires KafkaService#ready
+ * @fires KafkaService#disconnected
+ * @fires KafkaService#error
+ */
 class KafkaService extends EventEmitter {
     static DEFAULT_CONFIG = DEFAULT_CONFIG;
     static ENV_MAPPING = ENV_MAPPING;
 
+    /**
+     * @constructor
+     * @param {Object} [userConfig={}] - Custom configuration to override defaults
+     */
     constructor(userConfig = {}) {
         super();
+
         this.config = this._buildConfig(userConfig);
+
         this.health = {
             connected: false,
             lastProducerError: null,
@@ -20,6 +42,11 @@ class KafkaService extends EventEmitter {
         };
     }
 
+    /**
+     * @private
+     * @param {Object} userConfig - User provided configuration
+     * @returns {Object} Complete configuration with defaults and overrides
+     */
     _buildConfig(userConfig) {
         // Start with default config
         const config = JSON.parse(JSON.stringify(KafkaService.DEFAULT_CONFIG));
@@ -33,9 +60,14 @@ class KafkaService extends EventEmitter {
         return config;
     }
 
+    /**
+     * @private
+     * @param {Object} config - Configuration object to apply environment variables to
+     */
     _applyEnvVariables(config) {
         for (const [envVar, mapping] of Object.entries(KafkaService.ENV_MAPPING)) {
             const value = process.env[envVar];
+
             if (value !== undefined) {
                 let target = config;
                 const transformer =
@@ -52,6 +84,11 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * @private
+     * @param {Object} target - Target configuration object
+     * @param {Object} source - Source configuration object to merge from
+     */
     _mergeConfigs(target, source) {
         for (const key in source) {
             if (
@@ -69,6 +106,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * @private
+     * @async
+     * @returns {Object} Kafka client instance
+     * @throws {Error} If client creation fails
+     */
     async _createClient() {
         try {
             this.kafka = new Kafka(this.config.kafka);
@@ -79,6 +122,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * @private
+     * @async
+     * @returns {Object} Kafka producer instance
+     * @throws {Error} If producer creation fails
+     */
     async _createProducer() {
         try {
             this.producer = this.kafka.producer(this.config.producer);
@@ -97,6 +146,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * @private
+     * @async
+     * @returns {Object} Kafka consumer instance
+     * @throws {Error} If consumer creation fails
+     */
     async _createConsumer() {
         try {
             this.consumer = this.kafka.consumer(this.config.consumer);
@@ -115,6 +170,14 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Initialize the Kafka service
+     * @async
+     * @param {boolean} [createProducer=true] - Whether to create a producer
+     * @param {boolean} [createConsumer=true] - Whether to create a consumer
+     * @returns {Promise<boolean>} Success status
+     * @throws {Error} If initialization fails
+     */
     async init(createProducer = true, createConsumer = true) {
         try {
             await this._createClient();
@@ -140,6 +203,15 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Send a batch of messages to Kafka
+     * @async
+     * @param {Array} batchMessages - Array of messages to send
+     * @param {Object} [options] - Send options
+     * @param {number} [options.timeout=30000] - Timeout in milliseconds
+     * @returns {Promise<Object>} Send result
+     * @throws {Error} If batch send fails
+     */
     async sendBatch(batchMessages, { timeout = 30000 } = {}) {
         try {
             const result = await this.producer.sendBatch({
@@ -158,6 +230,16 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Send messages to a specific topic
+     * @async
+     * @param {string} topic - Kafka topic
+     * @param {Array} messages - Array of messages
+     * @param {Object} [options] - Send options
+     * @param {number} [options.timeout=30000] - Timeout in milliseconds
+     * @returns {Promise<Object>} Send result
+     * @throws {Error} If send fails
+     */
     async send(topic, messages, { timeout = 30000 } = {}) {
         try {
             const result = await this.producer.send({
@@ -174,6 +256,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Subscribe consumer to topics
+     * @async
+     * @param {Object} opts - Subscription options
+     * @throws {Error} If subscription fails
+     */
     async consumerSubscribe(opts) {
         try {
             await this.consumer.subscribe(opts);
@@ -184,6 +272,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Consume messages in batches
+     * @async
+     * @param {Function} callback - Batch processing callback
+     * @throws {Error} If batch consumption fails
+     */
     async consumeBatch(callback) {
         try {
             await this.consumer.run({
@@ -205,6 +299,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Consume messages individually
+     * @async
+     * @param {Function} callback - Message processing callback
+     * @throws {Error} If message consumption fails
+     */
     async consumeEach(callback) {
         try {
             await this.consumer.run({
@@ -225,6 +325,11 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Disconnect from Kafka
+     * @async
+     * @throws {Error} If disconnect fails
+     */
     async disconnect() {
         try {
             const tasks = [];
@@ -246,6 +351,12 @@ class KafkaService extends EventEmitter {
         }
     }
 
+    /**
+     * Handle and emit error events
+     * @private
+     * @param {string} type - Error type
+     * @param {Error} error - Error object
+     */
     _handleError(type, error) {
         const errorEvent = {
             type,
@@ -262,6 +373,10 @@ class KafkaService extends EventEmitter {
         this.emit('error', errorEvent);
     }
 
+    /**
+     * Get current health status
+     * @returns {Object} Health status object
+     */
     getHealth() {
         return {
             ...this.health,
