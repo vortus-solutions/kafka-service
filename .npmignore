@@ -27,3 +27,4 @@ logs/
 # IDE specific files
 .idea/
 .vscode/
+.devcontainer
