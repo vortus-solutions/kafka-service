@@ -7,7 +7,8 @@
     "extends": ["eslint:recommended", "plugin:node/recommended", "prettier"],
     "plugins": ["jest"],
     "parserOptions": {
-        "ecmaVersion": 2021
+        "ecmaVersion": 2022,  // Changed from 2021 to 2022
+        "sourceType": "module"  // Added this line
     },
     "rules": {
         "node/exports-style": ["error", "module.exports"],
