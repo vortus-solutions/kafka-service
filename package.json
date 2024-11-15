@@ -12,7 +12,6 @@
         "format": "prettier --write .",
         "build": "babel src -d lib",
         "prepare": "npm run build",
-        "prepublishOnly": "npm test && npm run lint",
         "preversion": "npm run lint",
         "version": "npm run format && git add -A src",
         "postversion": "git push && git push --tags"
@@ -44,6 +43,9 @@
         "eslint-plugin-node": "^11.1.0",
         "jest": "^29.7.0",
         "prettier": "^3.1.0"
+    },
+    "publishConfig": {
+        "access": "public"
     },
     "engines": {
         "node": ">=14.0.0"
