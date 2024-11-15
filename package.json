@@ -1,5 +1,5 @@
 {
-    "name": "@vortus/kafka-service",
+    "name": "@vortus-solutions/kafka-service",
     "version": "1.0.0",
     "description": "A robust Kafka service client for Node.js applications",
     "main": "lib/index.js",
@@ -29,7 +29,7 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/vortus/kafka-service.git"
+        "url": "git+https://github.com/vortus-solutions/kafka-service.git"
     },
     "dependencies": {
         "kafkajs": "^2.2.4"
