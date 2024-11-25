@@ -48,14 +48,18 @@ class KafkaService extends EventEmitter {
      * @returns {Object} Complete configuration with defaults and overrides
      */
     _buildConfig(userConfig) {
-        // Start with default config
-        const config = JSON.parse(JSON.stringify(KafkaService.DEFAULT_CONFIG));
-
-        // Apply environment variables
-        this._applyEnvVariables(config);
+        // Start with default config using object spread for shallow clone
+        const config = {
+            kafka: { ...KafkaService.DEFAULT_CONFIG.kafka },
+            producer: { ...KafkaService.DEFAULT_CONFIG.producer },
+            consumer: { ...KafkaService.DEFAULT_CONFIG.consumer }
+        };
 
         // Apply user config (overrides both defaults and env vars)
         this._mergeConfigs(config, userConfig);
+
+        // Apply environment variables
+        this._applyEnvVariables(config);
 
         return config;
     }
