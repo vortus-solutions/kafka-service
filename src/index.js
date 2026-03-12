@@ -136,13 +136,6 @@ class KafkaService extends EventEmitter {
 		try {
 			this.producer = this.kafka.producer({ kafkaJS: this.config.producer });
 
-			// Add producer event listeners
-			this.producer.on('producer.connect', () => this.emit('producer.connected'));
-			this.producer.on('producer.disconnect', () => this.emit('producer.disconnected'));
-			this.producer.on('producer.network.request_timeout', (error) =>
-				this._handleError('producer_timeout', error)
-			);
-
 			return this.producer;
 		} catch (error) {
 			this._handleError('producer_creation_error', error);
@@ -159,13 +152,6 @@ class KafkaService extends EventEmitter {
 	async _createConsumer() {
 		try {
 			this.consumer = this.kafka.consumer({ kafkaJS: this.config.consumer });
-
-			// Add consumer event listeners
-			this.consumer.on('consumer.connect', () => this.emit('consumer.connected'));
-			this.consumer.on('consumer.disconnect', () => this.emit('consumer.disconnected'));
-			this.consumer.on('consumer.crash', (error) =>
-				this._handleError('consumer_crash', error)
-			);
 
 			return this.consumer;
 		} catch (error) {
@@ -189,12 +175,14 @@ class KafkaService extends EventEmitter {
 			if (createProducer) {
 				await this._createProducer();
 				await this.producer.connect();
+				this.emit('producer.connected');
 				this.emit('producer.ready');
 			}
 
 			if (createConsumer) {
 				await this._createConsumer();
 				await this.consumer.connect();
+				this.emit('consumer.connected');
 				this.emit('consumer.ready');
 			}
 

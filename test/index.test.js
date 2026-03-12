@@ -8,7 +8,6 @@ jest.mock('@confluentinc/kafka-javascript', () => {
 		disconnect: jest.fn().mockResolvedValue(),
 		send: jest.fn().mockResolvedValue([{ topicName: 'test', partition: 0 }]),
 		sendBatch: jest.fn().mockResolvedValue([{ topicName: 'test', partition: 0 }]),
-		on: jest.fn(),
 	};
 
 	const mockConsumer = {
@@ -16,7 +15,6 @@ jest.mock('@confluentinc/kafka-javascript', () => {
 		disconnect: jest.fn().mockResolvedValue(),
 		subscribe: jest.fn().mockResolvedValue(),
 		run: jest.fn().mockResolvedValue(),
-		on: jest.fn(),
 	};
 
 	const mockKafka = {
@@ -172,20 +170,26 @@ describe('KafkaService', () => {
 			expect(readyHandler).toHaveBeenCalledTimes(1);
 		});
 
-		it('should emit producer.ready when producer is created', async () => {
+		it('should emit producer.connected and producer.ready when producer is created', async () => {
 			const service = new KafkaService();
-			const handler = jest.fn();
-			service.on('producer.ready', handler);
+			const connHandler = jest.fn();
+			const readyHandler = jest.fn();
+			service.on('producer.connected', connHandler);
+			service.on('producer.ready', readyHandler);
 			await service.init(true, false);
-			expect(handler).toHaveBeenCalledTimes(1);
+			expect(connHandler).toHaveBeenCalledTimes(1);
+			expect(readyHandler).toHaveBeenCalledTimes(1);
 		});
 
-		it('should emit consumer.ready when consumer is created', async () => {
+		it('should emit consumer.connected and consumer.ready when consumer is created', async () => {
 			const service = new KafkaService();
-			const handler = jest.fn();
-			service.on('consumer.ready', handler);
+			const connHandler = jest.fn();
+			const readyHandler = jest.fn();
+			service.on('consumer.connected', connHandler);
+			service.on('consumer.ready', readyHandler);
 			await service.init(false, true);
-			expect(handler).toHaveBeenCalledTimes(1);
+			expect(connHandler).toHaveBeenCalledTimes(1);
+			expect(readyHandler).toHaveBeenCalledTimes(1);
 		});
 
 		it('should skip producer when createProducer=false', async () => {
