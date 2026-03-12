@@ -135,7 +135,27 @@ O Confluent rejeita `autoCommit` no `run()` com erro `ERR__INVALID_ARG`. Essa pr
 
 ---
 
-### 8. Configs removidos do default (kafkajs-only)
+### 8. Mensagens podem chegar sem `headers`
+
+**Antes (v1.0.2):**
+O kafkajs sempre incluia `headers` como objeto nas mensagens, mesmo que vazio (`{}`).
+
+**Agora (v2.x):**
+O Confluent pode entregar mensagens com `headers` como `undefined` ou `null`.
+
+**Acao necessaria:** Verificar se o seu consumer acessa headers sem checagem previa:
+```js
+// ANTES — pode dar TypeError no v2.x
+if (message.headers['gtw-simulator'].toString() === 'true') { ... }
+
+// DEPOIS — seguro
+if (message.headers && message.headers['gtw-simulator']
+    && message.headers['gtw-simulator'].toString() === 'true') { ... }
+```
+
+---
+
+### 9. Configs removidos do default (kafkajs-only)
 
 Os seguintes configs existiam no default da v1.0.2 e foram removidos por serem exclusivos do kafkajs:
 
