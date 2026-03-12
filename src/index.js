@@ -10,10 +10,8 @@ const { DEFAULT_CONFIG, ENV_MAPPING } = require('./kafkaConfig');
  * @description A service class for managing Kafka producer and consumer operations with built-in error handling and health monitoring
  *
  * @fires KafkaService#producer.connected
- * @fires KafkaService#producer.disconnected
  * @fires KafkaService#producer.ready
  * @fires KafkaService#consumer.connected
- * @fires KafkaService#consumer.disconnected
  * @fires KafkaService#consumer.ready
  * @fires KafkaService#consumer.subscribed
  * @fires KafkaService#ready
@@ -118,7 +116,11 @@ class KafkaService extends EventEmitter {
 	 */
 	async _createClient() {
 		try {
-			this.kafka = new Kafka({ kafkaJS: this.config.kafka });
+			const kafkaConfig = { ...this.config.kafka };
+			if (kafkaConfig.sasl == null) {
+				delete kafkaConfig.sasl;
+			}
+			this.kafka = new Kafka({ kafkaJS: kafkaConfig });
 			return this.kafka;
 		} catch (error) {
 			this._handleError('client_creation_error', error);
@@ -199,8 +201,6 @@ class KafkaService extends EventEmitter {
 	 * Send a batch of messages to Kafka
 	 * @async
 	 * @param {Array} batchMessages - Array of messages to send
-	 * @param {Object} [options] - Send options
-	 * @param {number} [options.timeout=30000] - Timeout in milliseconds
 	 * @returns {Promise<Object>} Send result
 	 * @throws {Error} If batch send fails
 	 */
@@ -225,8 +225,6 @@ class KafkaService extends EventEmitter {
 	 * @async
 	 * @param {string} topic - Kafka topic
 	 * @param {Array} messages - Array of messages
-	 * @param {Object} [options] - Send options
-	 * @param {number} [options.timeout=30000] - Timeout in milliseconds
 	 * @returns {Promise<Object>} Send result
 	 * @throws {Error} If send fails
 	 */

@@ -7,7 +7,6 @@ const DEFAULT_CONFIG = {
 		clientId: 'default-kafka-client',
 		brokers: ['localhost:9092'],
 		ssl: false,
-		sasl: null,
 		connectionTimeout: 3000,
 		requestTimeout: 30000,
 		logLevel: logLevel.INFO,
