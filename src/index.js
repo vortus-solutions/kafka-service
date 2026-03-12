@@ -268,7 +268,6 @@ class KafkaService extends EventEmitter {
 		try {
 			await this.consumer.run({
 				eachBatchAutoResolve: true,
-				autoCommit: true,
 				eachBatch: async ({ batch, resolveOffset, heartbeat, isRunning, isStale }) => {
 					try {
 						await callback({ batch, resolveOffset, heartbeat, isRunning, isStale });
@@ -294,7 +293,6 @@ class KafkaService extends EventEmitter {
 	async consumeEach(callback) {
 		try {
 			await this.consumer.run({
-				autoCommit: true,
 				eachMessage: async ({ topic, partition, message, heartbeat, pause }) => {
 					try {
 						await callback({ topic, partition, message, heartbeat, pause });

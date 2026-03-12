@@ -120,7 +120,22 @@ O Confluent tenta ler `sasl.mechanism` mesmo quando `sasl` e `null`, causando cr
 
 ---
 
-### 7. Configs removidos do default (kafkajs-only)
+### 7. `autoCommit` nao e mais aceito em `consumer.run()`
+
+**Antes (v1.0.2):**
+O kafkajs aceitava `autoCommit` como opcao de `consumer.run()`:
+```js
+await consumer.run({ autoCommit: true, eachMessage: ... });
+```
+
+**Agora (v2.x):**
+O Confluent rejeita `autoCommit` no `run()` com erro `ERR__INVALID_ARG`. Essa propriedade deve ser passada no config do consumer na criacao.
+
+**Acao necessaria:** Nenhuma — a lib ja trata isso internamente. O `autoCommit` e configurado no consumer config (default: `true`) e foi removido das chamadas `consumeEach()` e `consumeBatch()`. Listado aqui para conhecimento caso voce interaja diretamente com o consumer.
+
+---
+
+### 8. Configs removidos do default (kafkajs-only)
 
 Os seguintes configs existiam no default da v1.0.2 e foram removidos por serem exclusivos do kafkajs:
 

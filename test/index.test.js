@@ -370,7 +370,6 @@ describe('KafkaService', () => {
 
 			expect(service.consumer.run).toHaveBeenCalledWith(
 				expect.objectContaining({
-					autoCommit: true,
 					eachMessage: expect.any(Function),
 				})
 			);
@@ -436,7 +435,6 @@ describe('KafkaService', () => {
 			expect(service.consumer.run).toHaveBeenCalledWith(
 				expect.objectContaining({
 					eachBatchAutoResolve: true,
-					autoCommit: true,
 					eachBatch: expect.any(Function),
 				})
 			);
