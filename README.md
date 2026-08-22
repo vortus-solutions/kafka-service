@@ -20,35 +20,36 @@ A robust Kafka service client for Node.js applications with built-in error handl
 
 To install the Kafka Service Client, run the following command:
 
-bash
-npm install kafka-service-client
+```bash
+npm install @vortus-solutions/kafka-service
+```
 
 ## Usage
 
 Here’s a basic example of how to use the Kafka Service Client:
 
-javascript
-const KafkaService = require('kafka-service-client');
+```js
+const KafkaService = require('@vortus-solutions/kafka-service');
 
 // Create an instance with custom configuration
 const kafka = new KafkaService({
-kafka: {
-clientId: 'my-app',
-brokers: ['localhost:9092']
-}
+    kafka: {
+        clientId: 'my-app',
+        brokers: ['localhost:9092'],
+    },
 });
 
 // Initialize the service
 (async () => {
-try {
-await kafka.init();
+    try {
+        await kafka.init();
 
         // Produce messages
         await kafka.send('my-topic', [
-        {
-            key: 'key1',
-            value: JSON.stringify({ message: 'Hello World' })
-        }
+            {
+                key: 'key1',
+                value: JSON.stringify({ message: 'Hello World' }),
+            },
         ]);
 
         // Consume messages
@@ -59,8 +60,8 @@ await kafka.init();
     } catch (error) {
         console.error('Error initializing Kafka service:', error);
     }
-
 })();
+```
 
 ## Configuration
 
@@ -68,54 +69,45 @@ The service comes with sensible defaults that can be overridden. You can configu
 
 ### Default Configuration
 
-javascript
+```js
 const config = {
-kafka: {
-clientId: 'default-kafka-client',
-brokers: ['localhost:9092'],
-ssl: false,
-sasl: null,
-connectionTimeout: 3000,
-requestTimeout: 30000,
-enforceRequestTimeout: true,
-maxInFlightRequests: 10,
-retry: {
-initialRetryTime: 300,
-maxRetryTime: 30000,
-retries: 8,
-factor: 0.2,
-},
-logLevel: 'INFO'
-},
-producer: {
-allowAutoTopicCreation: false,
-transactionTimeout: 30000,
-maxInFlightRequests: 5,
-idempotent: true,
-compression: 'GZIP',
-batchSize: 16384,
-acks: -1, // all
-timeout: 30000
-},
-consumer: {
-groupId: 'default-consumer-group',
-allowAutoTopicCreation: false,
-maxInFlightRequests: 20,
-sessionTimeout: 60000,
-heartbeatInterval: 3000,
-maxBytes: 10485760, // 10MB
-maxWaitTimeInMs: 5000,
-retry: {
-initialRetryTime: 100,
-maxRetryTime: 30000,
-retries: 8,
-factor: 0.2,
-},
-autoCommit: true,
-autoCommitInterval: 5000,
-autoOffsetReset: 'latest'
-}
+    kafka: {
+        clientId: 'default-kafka-client',
+        brokers: ['localhost:9092'],
+        ssl: false,
+        connectionTimeout: 3000,
+        requestTimeout: 30000,
+        retry: {
+            initialRetryTime: 300,
+            maxRetryTime: 30000,
+            retries: 8,
+        },
+    },
+    producer: {
+        allowAutoTopicCreation: false,
+        transactionTimeout: 30000,
+        compression: 'GZIP',
+        timeout: 30000,
+    },
+    consumer: {
+        groupId: 'default-consumer-group',
+        allowAutoTopicCreation: false,
+        maxInFlightRequests: 20,
+        sessionTimeout: 60000,
+        heartbeatInterval: 30000,
+        maxBytes: 10485760, // 10MB
+        maxWaitTimeInMs: 5000,
+        retry: {
+            initialRetryTime: 100,
+            maxRetryTime: 30000,
+            retries: 8,
+        },
+        autoCommit: true,
+        autoCommitInterval: 5000,
+        fromBeginning: false,
+    },
 };
+```
 
 ### Environment Variables
 
@@ -222,8 +214,18 @@ The health object includes:
 
 To run tests, ensure you have Jest installed and run:
 
-bash
+```bash
 npm test
+```
+
+The Kafka integration smoke test runs in CI. To run it locally, start the included
+broker and then run the opt-in test:
+
+```bash
+docker compose up --detach --wait
+KAFKA_INTEGRATION=true npm run test:integration
+docker compose down --volumes
+```
 
 You can add your tests in the `__tests__` directory. The tests should follow the naming convention `*.test.js`.
 
