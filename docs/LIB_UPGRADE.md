@@ -1,200 +1,188 @@
-# Guia de Upgrade: v1.0.2 → v2.x
+# Playbook de migração para IA: v1.0.2 → v2.0.7
 
-Este documento lista todas as mudancas que podem impactar aplicacoes que atualizam de `@vortus-solutions/kafka-service@1.0.2` (kafkajs) para a versao 2.x (@confluentinc/kafka-javascript).
+Use este documento para migrar uma aplicação que usa
+`@vortus-solutions/kafka-service@1.0.2` para `2.0.7`. O baseline legado é o
+commit `9b5627181c114946fc624adf555e7e7de28b1176`.
 
----
+Para todos os parâmetros, envio, consumo, compressão e offsets da v2.0.7, use
+a [referência operacional para IA](API_REFERENCE.md).
 
-## Requisitos
+## Instruções para o agente
 
-| Item | v1.0.2 | v2.x |
-|------|--------|------|
-| Node.js | >= 14 | **>= 18** |
-| Dependencia Kafka | kafkajs ^2.2.4 | @confluentinc/kafka-javascript ^1.0.0 |
+1. Não altere a semântica de tópicos, `groupId`, autenticação ou garantias de
+   entrega sem evidência no código da aplicação.
+2. Faça as transformações desta página somente quando o padrão correspondente
+   existir. Preserve configurações não relacionadas.
+3. Configure o consumidor antes de `init()`. Não tente reconfigurá-lo depois
+   da conexão.
+4. Ao terminar, execute os testes da aplicação e valide produção com um
+   producer e consumer no mesmo tópico/grupo de homologação.
 
-> A lib Confluent usa bindings nativos (librdkafka). Certifique-se de que o ambiente de build suporta compilacao nativa (gcc, make, python).
+## Compatibilidade de runtime
 
----
+| Item          | v1.0.2           | v2.0.7                                   |
+| ------------- | ---------------- | ---------------------------------------- |
+| Node.js       | `>=14`           | `>=18`                                   |
+| Cliente Kafka | `kafkajs ^2.2.4` | `@confluentinc/kafka-javascript ^1.10.0` |
+| Implementação | JavaScript       | bindings nativos do `librdkafka`         |
 
-## Breaking Changes
+O cliente Confluent fornece binários pré-compilados para plataformas suportadas.
+Em uma plataforma fora da matriz suportada, o ambiente de build precisa das
+ferramentas de compilação nativa.
 
-### 1. `send()` — parametro `timeout` removido
+## Transformações obrigatórias
 
-**Antes (v1.0.2):**
+### 1. Remover timeout por envio
+
+Na v1.0.2, `send()` e `sendBatch()` aceitavam um timeout por chamada. Na v2.0.7,
+argumentos extras são ignorados pelo JavaScript: o timeout efetivo é o de
+`producer.timeout`.
+
 ```js
-await kafka.send('topic', messages, { timeout: 5000 });
-```
-
-**Agora (v2.x):**
-```js
-await kafka.send('topic', messages);
-```
-
-O terceiro argumento ainda pode ser passado sem causar erro (JS ignora args extras), mas o `timeout` **nao tem mais efeito per-call**. O timeout agora e definido globalmente no config do producer (`config.producer.timeout`, default 30000ms).
-
-**Acao necessaria:** Se voce usa timeout customizado por chamada, mova para o config do producer:
-```js
-const kafka = new KafkaService({
-    producer: { timeout: 5000 }
-});
-```
-
----
-
-### 2. `sendBatch()` — parametro `timeout` removido
-
-Mesma situacao do `send()`. O segundo argumento `{ timeout }` nao existe mais.
-
-**Antes:**
-```js
+// v1.0.2
+await kafka.send('orders', messages, { timeout: 5000 });
 await kafka.sendBatch(batchMessages, { timeout: 10000 });
-```
 
-**Agora:**
-```js
+// v2.0.7
+const kafka = new KafkaService({ producer: { timeout: 5000 } });
+await kafka.send('orders', messages);
 await kafka.sendBatch(batchMessages);
 ```
 
-**Acao necessaria:** Mesma do item 1 — mover timeout para `config.producer.timeout`.
+Procure por chamadas de três argumentos a `send` e de dois argumentos a
+`sendBatch`. Não converta um timeout variável por mensagem para um valor global
+sem confirmar que essa perda de granularidade é aceitável.
 
----
+### 2. Mover `fromBeginning` para a configuração do consumidor
 
-### 3. `consumerSubscribe()` — `fromBeginning` configurado no consumer
+O backend Confluent não aceita `fromBeginning` em `consumer.subscribe()`. A
+v2.0.7 remove o campo antes de encaminhar a chamada, porém, se ele for informado
+na assinatura, seu valor precisa ser igual a `consumer.fromBeginning` configurado
+antes de `init()`.
 
-**Antes (v1.0.2):**
 ```js
-await kafka.consumerSubscribe({
-    topics: ['my-topic'],
-    fromBeginning: true
+// v1.0.2
+await kafka.consumerSubscribe({ topics: ['orders'], fromBeginning: true });
+
+// v2.0.7
+const kafka = new KafkaService({
+    consumer: { fromBeginning: true },
 });
+await kafka.init(false, true);
+await kafka.consumerSubscribe({ topics: ['orders'] });
 ```
 
-**Agora (v2.x):**
-O Confluent nao aceita `fromBeginning` no `subscribe()`. A lib remove o campo antes de encaminhar a assinatura, mas ele deve ser igual ao valor configurado no consumer antes de `init()`.
+O default é `false`. Para reduzir risco, remova `fromBeginning` da chamada de
+`consumerSubscribe()` depois de movê-lo para o construtor.
 
-**Acao necessaria:** Mover `fromBeginning` para o config do consumer na criacao do KafkaService:
+### 3. Substituir listeners de desconexão específicos
+
+Os eventos `producer.disconnected` e `consumer.disconnected` eram derivados de
+listeners do KafkaJS na v1.0.2. Eles não existem na v2.0.7. Use o evento único
+`disconnected`, emitido após `KafkaService.disconnect()` concluir.
+
+```js
+// Remover
+kafka.on('producer.disconnected', onDisconnect);
+kafka.on('consumer.disconnected', onDisconnect);
+
+// Usar
+kafka.on('disconnected', onDisconnect);
+```
+
+`producer.connected` e `consumer.connected` continuam disponíveis e são emitidos
+após cada conexão bem-sucedida durante `init()`.
+
+### 4. Tornar acesso a headers tolerante a ausência
+
+O Confluent pode entregar `message.headers` como `undefined` ou `null`. Não
+acesse uma chave de header sem proteção.
+
+```js
+// Inseguro na v2.0.7
+message.headers['trace-id'].toString();
+
+// Seguro
+const traceId = message.headers?.['trace-id']?.toString();
+```
+
+## Configuração: mapa de conversão
+
+| Configuração v1.0.2                            | Ação na v2.0.7                                                                                                   |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `kafka.sasl: null`                             | Pode manter. A lib remove esse valor antes de criar o cliente.                                                   |
+| `kafka.enforceRequestTimeout`                  | Remover; é exclusivo do KafkaJS.                                                                                 |
+| `kafka.retry.factor` e `consumer.retry.factor` | Remover; não são usados pelo Confluent.                                                                          |
+| `producer.createPartitioner`                   | Remover; o `librdkafka` escolhe o particionamento.                                                               |
+| `send(..., { timeout })`                       | Mover para `producer.timeout`.                                                                                   |
+| `consumer.run({ autoCommit })`                 | Configurar `consumer.autoCommit` no construtor. `consumeEach()` e `consumeBatch()` já não encaminham essa opção. |
+| Configuração nativa do librdkafka              | Colocar em `rdKafka` no escopo correto.                                                                          |
+
+Exemplo de configuração nativa. As chaves dentro de `rdKafka` não são KafkaJS:
+
 ```js
 const kafka = new KafkaService({
-    consumer: { fromBeginning: true }
+    kafka: {
+        rdKafka: { 'ssl.ca.location': '/run/secrets/ca.pem' },
+    },
+    producer: {
+        rdKafka: { 'queue.buffering.max.ms': 10 },
+    },
+    consumer: {
+        rdKafka: { 'enable.partition.eof': true },
+    },
 });
 ```
 
-> **Nota:** `fromBeginning: false` continua sendo o default. Para `true`, configure `consumer.fromBeginning: true` e mantenha o mesmo valor em `consumerSubscribe()`.
+## O que preservar
 
----
+Não reescreva chamadas que já usam estas APIs; elas continuam com a mesma forma:
 
-### 4. Eventos `producer.disconnected` e `consumer.disconnected` nao sao mais emitidos
-
-**Antes (v1.0.2):**
 ```js
-kafka.on('producer.disconnected', () => console.log('Producer desconectou'));
-kafka.on('consumer.disconnected', () => console.log('Consumer desconectou'));
+new KafkaService(config);
+await kafka.init(createProducer, createConsumer);
+await kafka.send(topic, messages);
+await kafka.sendBatch(batchMessages);
+await kafka.consumerSubscribe({ topics });
+await kafka.consumeEach(callback);
+await kafka.consumeBatch(callback);
+await kafka.disconnect();
+kafka.getHealth();
 ```
 
-**Agora (v2.x):**
-Esses eventos nunca disparam. A lib Confluent nao expoe `.on()` nos objetos producer/consumer como o kafkajs fazia.
+Também permanecem: precedência de variáveis `KAFKA_*` sobre o construtor,
+contadores de saúde, `ready`, `error`, `disconnected`, `producer.ready`,
+`consumer.ready` e `consumer.subscribed`.
 
-**Acao necessaria:** Usar o evento `disconnected` do KafkaService (que continua funcionando):
-```js
-kafka.on('disconnected', () => console.log('Kafka desconectou'));
-```
+## Armadilhas a evitar
 
----
+-   Não passe configurações nativas diretamente em `kafka`, `producer` ou
+    `consumer`; use `rdKafka`.
+-   Não suponha que o terceiro argumento de `send()` ainda controla timeout. Ele
+    não produz erro, mas também não altera o comportamento.
+-   Não habilite `fromBeginning: true` sem verificar o impacto de reprocessar o
+    histórico do tópico para aquele `groupId`.
+-   Não trate a ausência de `producer.disconnected` como falha de conexão; o
+    evento não é emitido na v2.0.7.
+-   Não use as variáveis de ambiente SASL comentadas no código como interface
+    pública. Passe `kafka.sasl` no construtor até que a aplicação tenha uma
+    configuração própria e validada para credenciais.
 
-### 5. `compression` nao e mais configuravel per-call
+## Checklist executável
 
-**Antes (v1.0.2):**
-A compressao GZIP era aplicada em cada chamada `send()` e `sendBatch()` internamente.
-
-**Agora (v2.x):**
-A compressao e definida uma vez no config do producer (default: GZIP). Nao ha mudanca se voce usava o default, mas se dependia de comportamento diferente por chamada, nao e mais possivel.
-
----
-
-### 6. Config `sasl: null` tratado automaticamente
-
-**Antes (v1.0.2):**
-O kafkajs aceitava `sasl: null` sem problemas.
-
-**Agora (v2.x):**
-O Confluent tenta ler `sasl.mechanism` mesmo quando `sasl` e `null`, causando crash. A lib agora remove `sasl` automaticamente quando for `null` ou `undefined`, entao **nao e necessaria nenhuma acao**. Listado aqui apenas para conhecimento.
-
----
-
-### 7. `autoCommit` nao e mais aceito em `consumer.run()`
-
-**Antes (v1.0.2):**
-O kafkajs aceitava `autoCommit` como opcao de `consumer.run()`:
-```js
-await consumer.run({ autoCommit: true, eachMessage: ... });
-```
-
-**Agora (v2.x):**
-O Confluent rejeita `autoCommit` no `run()` com erro `ERR__INVALID_ARG`. Essa propriedade deve ser passada no config do consumer na criacao.
-
-**Acao necessaria:** Nenhuma — a lib ja trata isso internamente. O `autoCommit` e configurado no consumer config (default: `true`) e foi removido das chamadas `consumeEach()` e `consumeBatch()`. Listado aqui para conhecimento caso voce interaja diretamente com o consumer.
-
----
-
-### 8. Mensagens podem chegar sem `headers`
-
-**Antes (v1.0.2):**
-O kafkajs sempre incluia `headers` como objeto nas mensagens, mesmo que vazio (`{}`).
-
-**Agora (v2.x):**
-O Confluent pode entregar mensagens com `headers` como `undefined` ou `null`.
-
-**Acao necessaria:** Verificar se o seu consumer acessa headers sem checagem previa:
-```js
-// ANTES — pode dar TypeError no v2.x
-if (message.headers['gtw-simulator'].toString() === 'true') { ... }
-
-// DEPOIS — seguro
-if (message.headers && message.headers['gtw-simulator']
-    && message.headers['gtw-simulator'].toString() === 'true') { ... }
-```
-
----
-
-### 9. Configs removidos do default (kafkajs-only)
-
-Os seguintes configs existiam no default da v1.0.2 e foram removidos por serem exclusivos do kafkajs:
-
-| Config removido | Onde estava | Motivo |
-|---|---|---|
-| `createPartitioner: Partitioners.DefaultPartitioner` | producer | librdkafka gerencia particionamento nativamente |
-| `enforceRequestTimeout: true` | kafka | nao existe no Confluent |
-| `retry.factor: 0.2` | kafka.retry, consumer.retry | nao existe no Confluent |
-
-**Acao necessaria:** Nenhuma, a menos que voce referenciava esses valores via `KafkaService.DEFAULT_CONFIG`.
-
----
-
-## O que continua funcionando sem alteracao
-
-- `new KafkaService(config)` — mesma API de construcao
-- `kafka.init(createProducer, createConsumer)` — mesma assinatura
-- `kafka.send(topic, messages)` — funciona (sem terceiro arg)
-- `kafka.sendBatch(batchMessages)` — funciona (sem segundo arg)
-- `kafka.consumerSubscribe({ topics: [...] })` — funciona (sem `fromBeginning`)
-- `kafka.consumeEach(callback)` — mesma assinatura de callback
-- `kafka.consumeBatch(callback)` — mesma assinatura de callback
-- `kafka.disconnect()` — mesmo comportamento
-- `kafka.getHealth()` — mesmo retorno
-- Eventos: `ready`, `error`, `disconnected`, `producer.connected`, `producer.ready`, `consumer.connected`, `consumer.ready`, `consumer.subscribed`
-- Todas as env vars (`KAFKA_BROKERS`, `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP_ID`, etc.)
-- Config override por env var continua tendo prioridade sobre config do constructor
-- Configuracoes nativas podem ser passadas em `rdKafka` dentro de `kafka`, `producer` ou `consumer`
-
----
-
-## Checklist de upgrade
-
-- [ ] Node.js >= 18 no ambiente de deploy
-- [ ] Ambiente suporta compilacao nativa (librdkafka)
-- [ ] Buscar por `send(` com terceiro argumento `{ timeout }` — mover para config.producer
-- [ ] Buscar por `sendBatch(` com segundo argumento `{ timeout }` — mover para config.producer
-- [ ] Buscar por `fromBeginning` em chamadas `consumerSubscribe()` — mover para config.consumer
-- [ ] Buscar por listeners de `producer.disconnected` e `consumer.disconnected` — substituir por `disconnected`
-- [ ] Buscar por referencias a `KafkaService.DEFAULT_CONFIG` que usem `createPartitioner`, `enforceRequestTimeout` ou `retry.factor`
-- [ ] Mover configuracoes exclusivas do librdkafka para `rdKafka`, por exemplo `producer: { rdKafka: { 'queue.buffering.max.ms': 10 } }`
-- [ ] Rodar testes da aplicacao
+-   [ ] Atualizar Node.js para 18 ou superior.
+-   [ ] Atualizar a dependência para `@vortus-solutions/kafka-service@2.0.7`.
+-   [ ] Buscar `send(` com opções de timeout e mover o valor necessário para
+        `producer.timeout`.
+-   [ ] Buscar `sendBatch(` com opções de timeout e fazer a mesma migração.
+-   [ ] Buscar `consumerSubscribe(` com `fromBeginning`; mover o valor para
+        `consumer.fromBeginning` antes de `init()`.
+-   [ ] Buscar listeners de `producer.disconnected` e `consumer.disconnected`;
+        trocar por `disconnected` quando o objetivo for observar o desligamento
+        explícito do serviço.
+-   [ ] Buscar acessos a `message.headers[...]`; torná-los opcionais.
+-   [ ] Remover `createPartitioner`, `enforceRequestTimeout` e `retry.factor` de
+        configurações herdadas ou de usos de `KafkaService.DEFAULT_CONFIG`.
+-   [ ] Mover opções nativas para `rdKafka`.
+-   [ ] Executar os testes da aplicação e um smoke test real de produzir, consumir
+        e desconectar com as credenciais e o cluster de homologação.
