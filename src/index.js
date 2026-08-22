@@ -71,19 +71,25 @@ class KafkaService extends EventEmitter {
 			const value = process.env[envVar];
 
 			if (value !== undefined) {
+				const path = [...mapping];
 				let target = config;
 				const transformer =
-					typeof mapping[mapping.length - 1] === 'function' ? mapping.pop() : (v) => v;
+					typeof path[path.length - 1] === 'function' ? path.pop() : (v) => v;
 
 				// Navigate to the correct nested property
-				for (let i = 0; i < mapping.length - 1; i++) {
-					target = target[mapping[i]];
+				for (let i = 0; i < path.length - 1; i++) {
+					target = target[path[i]];
 				}
 
 				// Set the transformed value
-				target[mapping[mapping.length - 1]] = transformer(value);
+				target[path[path.length - 1]] = transformer(value);
 			}
 		}
+	}
+
+	_buildConfluentConfig(config) {
+		const { rdKafka = {}, ...kafkaJS } = config;
+		return { ...rdKafka, kafkaJS };
 	}
 
 	/**
@@ -120,7 +126,7 @@ class KafkaService extends EventEmitter {
 			if (kafkaConfig.sasl == null) {
 				delete kafkaConfig.sasl;
 			}
-			this.kafka = new Kafka({ kafkaJS: kafkaConfig });
+			this.kafka = new Kafka(this._buildConfluentConfig(kafkaConfig));
 			return this.kafka;
 		} catch (error) {
 			this._handleError('client_creation_error', error);
@@ -136,7 +142,7 @@ class KafkaService extends EventEmitter {
 	 */
 	async _createProducer() {
 		try {
-			this.producer = this.kafka.producer({ kafkaJS: this.config.producer });
+			this.producer = this.kafka.producer(this._buildConfluentConfig(this.config.producer));
 
 			return this.producer;
 		} catch (error) {
@@ -153,7 +159,7 @@ class KafkaService extends EventEmitter {
 	 */
 	async _createConsumer() {
 		try {
-			this.consumer = this.kafka.consumer({ kafkaJS: this.config.consumer });
+			this.consumer = this.kafka.consumer(this._buildConfluentConfig(this.config.consumer));
 
 			return this.consumer;
 		} catch (error) {
@@ -250,7 +256,16 @@ class KafkaService extends EventEmitter {
 	 */
 	async consumerSubscribe(opts) {
 		try {
-			await this.consumer.subscribe(opts);
+			const { fromBeginning, ...subscription } = opts;
+			if (
+				typeof fromBeginning === 'boolean' &&
+				this.config.consumer.fromBeginning !== fromBeginning
+			) {
+				throw new Error(
+					'consumer.fromBeginning must match consumerSubscribe({ fromBeginning }) before init()'
+				);
+			}
+			await this.consumer.subscribe(subscription);
 			this.emit('consumer.subscribed', opts);
 		} catch (error) {
 			this._handleError('subscription_error', error);

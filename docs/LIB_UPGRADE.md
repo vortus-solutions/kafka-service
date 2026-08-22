@@ -58,7 +58,7 @@ await kafka.sendBatch(batchMessages);
 
 ---
 
-### 3. `consumerSubscribe()` — `fromBeginning` ignorado
+### 3. `consumerSubscribe()` — `fromBeginning` configurado no consumer
 
 **Antes (v1.0.2):**
 ```js
@@ -69,7 +69,7 @@ await kafka.consumerSubscribe({
 ```
 
 **Agora (v2.x):**
-O Confluent nao aceita `fromBeginning` no `subscribe()`. A propriedade e ignorada silenciosamente.
+O Confluent nao aceita `fromBeginning` no `subscribe()`. A lib remove o campo antes de encaminhar a assinatura, mas ele deve ser igual ao valor configurado no consumer antes de `init()`.
 
 **Acao necessaria:** Mover `fromBeginning` para o config do consumer na criacao do KafkaService:
 ```js
@@ -78,7 +78,7 @@ const kafka = new KafkaService({
 });
 ```
 
-> **Nota:** Se voce usava `fromBeginning: false` (que e o default), nenhuma alteracao e necessaria.
+> **Nota:** `fromBeginning: false` continua sendo o default. Para `true`, configure `consumer.fromBeginning: true` e mantenha o mesmo valor em `consumerSubscribe()`.
 
 ---
 
@@ -183,6 +183,7 @@ Os seguintes configs existiam no default da v1.0.2 e foram removidos por serem e
 - Eventos: `ready`, `error`, `disconnected`, `producer.connected`, `producer.ready`, `consumer.connected`, `consumer.ready`, `consumer.subscribed`
 - Todas as env vars (`KAFKA_BROKERS`, `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP_ID`, etc.)
 - Config override por env var continua tendo prioridade sobre config do constructor
+- Configuracoes nativas podem ser passadas em `rdKafka` dentro de `kafka`, `producer` ou `consumer`
 
 ---
 
@@ -195,4 +196,5 @@ Os seguintes configs existiam no default da v1.0.2 e foram removidos por serem e
 - [ ] Buscar por `fromBeginning` em chamadas `consumerSubscribe()` — mover para config.consumer
 - [ ] Buscar por listeners de `producer.disconnected` e `consumer.disconnected` — substituir por `disconnected`
 - [ ] Buscar por referencias a `KafkaService.DEFAULT_CONFIG` que usem `createPartitioner`, `enforceRequestTimeout` ou `retry.factor`
+- [ ] Mover configuracoes exclusivas do librdkafka para `rdKafka`, por exemplo `producer: { rdKafka: { 'queue.buffering.max.ms': 10 } }`
 - [ ] Rodar testes da aplicacao

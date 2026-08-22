@@ -1,5 +1,12 @@
 'use strict';
 
+jest.mock('@confluentinc/kafka-javascript', () => ({
+	KafkaJS: {
+		CompressionTypes: { GZIP: 'gzip', SNAPPY: 'snappy', LZ4: 'lz4', ZSTD: 'zstd' },
+		logLevel: { NOTHING: 0, ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 },
+	},
+}));
+
 const { DEFAULT_CONFIG, ENV_MAPPING } = require('../src/kafkaConfig');
 const { CompressionTypes, logLevel } = require('@confluentinc/kafka-javascript').KafkaJS;
 
@@ -56,6 +63,10 @@ describe('kafkaConfig', () => {
 		it('should set consumer session timeout and heartbeat', () => {
 			expect(DEFAULT_CONFIG.consumer.sessionTimeout).toBe(60000);
 			expect(DEFAULT_CONFIG.consumer.heartbeatInterval).toBe(30000);
+		});
+
+		it('should set consumer offset reset to latest by default', () => {
+			expect(DEFAULT_CONFIG.consumer.fromBeginning).toBe(false);
 		});
 	});
 

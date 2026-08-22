@@ -32,6 +32,7 @@ const DEFAULT_CONFIG = {
 		sessionTimeout: 60000,
 		heartbeatInterval: 30000,
 		maxWaitTimeInMs: 5000,
+		fromBeginning: false,
 		autoCommit: true,
 		autoCommitInterval: 5000,
 		retry: {

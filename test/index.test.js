@@ -34,14 +34,6 @@ jest.mock('@confluentinc/kafka-javascript', () => {
 const KafkaService = require('../src/index');
 const { DEFAULT_CONFIG } = require('../src/kafkaConfig');
 
-function getMocks() {
-	const kafka = new KafkaService();
-	const mockKafkaInstance = Kafka.mock.results[Kafka.mock.results.length - 1].value;
-	const mockProducer = mockKafkaInstance.producer();
-	const mockConsumer = mockKafkaInstance.consumer();
-	return { kafka, mockKafkaInstance, mockProducer, mockConsumer };
-}
-
 beforeEach(() => {
 	jest.clearAllMocks();
 });
@@ -145,6 +137,12 @@ describe('KafkaService', () => {
 			const service = new KafkaService();
 			expect(service.config.kafka.retry.retries).toBe(3);
 		});
+
+		it('should apply transformed env vars to every service instance', () => {
+			process.env.KAFKA_BROKERS = 'broker1:9092,broker2:9092';
+			expect(new KafkaService().config.kafka.brokers).toEqual(['broker1:9092', 'broker2:9092']);
+			expect(new KafkaService().config.kafka.brokers).toEqual(['broker1:9092', 'broker2:9092']);
+		});
 	});
 
 	describe('init()', () => {
@@ -160,6 +158,28 @@ describe('KafkaService', () => {
 				kafkaJS: service.config.consumer,
 			});
 			expect(service.health.connected).toBe(true);
+		});
+
+		it('should pass native configs outside kafkaJS', async () => {
+			const service = new KafkaService({
+				kafka: { rdKafka: { 'ssl.ca.location': '/tmp/ca.pem' } },
+				producer: { rdKafka: { 'queue.buffering.max.ms': 10 } },
+				consumer: { rdKafka: { 'enable.partition.eof': true } },
+			});
+			await service.init();
+
+			expect(Kafka).toHaveBeenCalledWith({
+				'ssl.ca.location': '/tmp/ca.pem',
+				kafkaJS: expect.not.objectContaining({ rdKafka: expect.anything() }),
+			});
+			expect(service.kafka.producer).toHaveBeenCalledWith({
+				'queue.buffering.max.ms': 10,
+				kafkaJS: expect.not.objectContaining({ rdKafka: expect.anything() }),
+			});
+			expect(service.kafka.consumer).toHaveBeenCalledWith({
+				'enable.partition.eof': true,
+				kafkaJS: expect.not.objectContaining({ rdKafka: expect.anything() }),
+			});
 		});
 
 		it('should emit ready event', async () => {
@@ -340,6 +360,24 @@ describe('KafkaService', () => {
 			const opts = { topics: ['topic-a'] };
 			await service.consumerSubscribe(opts);
 			expect(handler).toHaveBeenCalledWith(opts);
+		});
+
+		it('should strip compatible fromBeginning before subscribing', async () => {
+			await service.consumerSubscribe({ topics: ['topic-a'], fromBeginning: false });
+			expect(service.consumer.subscribe).toHaveBeenCalledWith({ topics: ['topic-a'] });
+		});
+
+		it('should require fromBeginning to be configured before init', async () => {
+			await expect(
+				service.consumerSubscribe({ topics: ['topic-a'], fromBeginning: true })
+			).rejects.toThrow('consumer.fromBeginning must match');
+		});
+
+		it('should accept fromBeginning when configured before init', async () => {
+			const configuredService = new KafkaService({ consumer: { fromBeginning: true } });
+			await configuredService.init(false, true);
+			await configuredService.consumerSubscribe({ topics: ['topic-a'], fromBeginning: true });
+			expect(configuredService.consumer.subscribe).toHaveBeenCalledWith({ topics: ['topic-a'] });
 		});
 
 		it('should throw and emit error on failure', async () => {
