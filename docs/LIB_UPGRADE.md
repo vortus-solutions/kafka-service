@@ -1,10 +1,10 @@
-# Playbook de migração para IA: v1.0.2 → v2.0.7
+# Playbook de migração para IA: v1.0.2 → v2.1.9
 
 Use este documento para migrar uma aplicação que usa
-`@vortus-solutions/kafka-service@1.0.2` para `2.0.7`. O baseline legado é o
+`@vortus-solutions/kafka-service@1.0.2` para `2.1.9`. O baseline legado é o
 commit `9b5627181c114946fc624adf555e7e7de28b1176`.
 
-Para todos os parâmetros, envio, consumo, compressão e offsets da v2.0.7, use
+Para todos os parâmetros, envio, consumo, compressão e offsets da v2.1.9, use
 a [referência operacional para IA](API_REFERENCE.md).
 
 ## Instruções para o agente
@@ -20,7 +20,7 @@ a [referência operacional para IA](API_REFERENCE.md).
 
 ## Compatibilidade de runtime
 
-| Item          | v1.0.2           | v2.0.7                                   |
+| Item          | v1.0.2           | v2.1.9                                   |
 | ------------- | ---------------- | ---------------------------------------- |
 | Node.js       | `>=14`           | `>=18`                                   |
 | Cliente Kafka | `kafkajs ^2.2.4` | `@confluentinc/kafka-javascript ^1.10.0` |
@@ -34,7 +34,7 @@ ferramentas de compilação nativa.
 
 ### 1. Remover timeout por envio
 
-Na v1.0.2, `send()` e `sendBatch()` aceitavam um timeout por chamada. Na v2.0.7,
+Na v1.0.2, `send()` e `sendBatch()` aceitavam um timeout por chamada. Na v2.1.9,
 argumentos extras são ignorados pelo JavaScript: o timeout efetivo é o de
 `producer.timeout`.
 
@@ -43,7 +43,7 @@ argumentos extras são ignorados pelo JavaScript: o timeout efetivo é o de
 await kafka.send('orders', messages, { timeout: 5000 });
 await kafka.sendBatch(batchMessages, { timeout: 10000 });
 
-// v2.0.7
+// v2.1.9
 const kafka = new KafkaService({ producer: { timeout: 5000 } });
 await kafka.send('orders', messages);
 await kafka.sendBatch(batchMessages);
@@ -56,7 +56,7 @@ sem confirmar que essa perda de granularidade é aceitável.
 ### 2. Mover `fromBeginning` para a configuração do consumidor
 
 O backend Confluent não aceita `fromBeginning` em `consumer.subscribe()`. A
-v2.0.7 remove o campo antes de encaminhar a chamada, porém, se ele for informado
+v2.1.9 remove o campo antes de encaminhar a chamada, porém, se ele for informado
 na assinatura, seu valor precisa ser igual a `consumer.fromBeginning` configurado
 antes de `init()`.
 
@@ -64,7 +64,7 @@ antes de `init()`.
 // v1.0.2
 await kafka.consumerSubscribe({ topics: ['orders'], fromBeginning: true });
 
-// v2.0.7
+// v2.1.9
 const kafka = new KafkaService({
     consumer: { fromBeginning: true },
 });
@@ -78,7 +78,7 @@ O default é `false`. Para reduzir risco, remova `fromBeginning` da chamada de
 ### 3. Substituir listeners de desconexão específicos
 
 Os eventos `producer.disconnected` e `consumer.disconnected` eram derivados de
-listeners do KafkaJS na v1.0.2. Eles não existem na v2.0.7. Use o evento único
+listeners do KafkaJS na v1.0.2. Eles não existem na v2.1.9. Use o evento único
 `disconnected`, emitido após `KafkaService.disconnect()` concluir.
 
 ```js
@@ -93,13 +93,53 @@ kafka.on('disconnected', onDisconnect);
 `producer.connected` e `consumer.connected` continuam disponíveis e são emitidos
 após cada conexão bem-sucedida durante `init()`.
 
-### 4. Tornar acesso a headers tolerante a ausência
+### 4. Substituir a rede de segurança de `consumer_crash`
+
+**Capacidade removida sem equivalente.** Na v1.0.2 a lib registrava
+`consumer.on('consumer.crash', ...)` e reemitia o evento como `error` com
+`type: 'consumer_crash'`. O backend Confluent não expõe esse listener, então na
+v2.1.9 esse tipo de erro **nunca é emitido**.
+
+O evento `error` continua existindo, mas um dos seus tipos evaporou. Uma
+aplicação que faz `type === 'consumer_crash'` migra sem erro de compilação,
+sem teste quebrado e sem log — e perde a detecção de consumer morto em silêncio.
+
+```js
+// v1.0.2 — deixa de funcionar na v2.1.9
+kafka.on('error', ({ type, error }) => {
+    if (type === 'consumer_crash') restartConsumer(error);
+});
+```
+
+Não existe substituto por evento. Troque a detecção por evento por detecção por
+estado, usando `getHealth().partitionsAssigned`:
+
+```js
+// v2.1.9 — o consumer não perde partições em operação normal;
+// perde por poucos ms durante um rebalance.
+setInterval(() => {
+    const { connected, partitionsAssigned } = kafka.getHealth();
+    if (connected && partitionsAssigned === 0) {
+        consecutivosZerados++;
+    } else {
+        consecutivosZerados = 0;
+    }
+    // Exija leituras consecutivas para não confundir rebalance com consumer morto.
+    if (consecutivosZerados >= 3) restartConsumer();
+}, 10000);
+```
+
+Os erros de processamento continuam disponíveis pelos tipos
+`message_processing_error` e `batch_processing_error`, mas eles cobrem falha do
+seu callback, não a morte do loop de consumo.
+
+### 5. Tornar acesso a headers tolerante a ausência
 
 O Confluent pode entregar `message.headers` como `undefined` ou `null`. Não
 acesse uma chave de header sem proteção.
 
 ```js
-// Inseguro na v2.0.7
+// Inseguro na v2.1.9
 message.headers['trace-id'].toString();
 
 // Seguro
@@ -108,7 +148,7 @@ const traceId = message.headers?.['trace-id']?.toString();
 
 ## Configuração: mapa de conversão
 
-| Configuração v1.0.2                            | Ação na v2.0.7                                                                                                   |
+| Configuração v1.0.2                            | Ação na v2.1.9                                                                                                   |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `kafka.sasl: null`                             | Pode manter. A lib remove esse valor antes de criar o cliente.                                                   |
 | `kafka.enforceRequestTimeout`                  | Remover; é exclusivo do KafkaJS.                                                                                 |
@@ -154,16 +194,22 @@ Também permanecem: precedência de variáveis `KAFKA_*` sobre o construtor,
 contadores de saúde, `ready`, `error`, `disconnected`, `producer.ready`,
 `consumer.ready` e `consumer.subscribed`.
 
+O evento `error` permanece com a mesma forma (`{ type, error, timestamp }`),
+**mas o conjunto de `type` mudou**: `consumer_crash` não existe mais. Veja a
+[transformação 4](#4-substituir-a-rede-de-segurança-de-consumer_crash).
+
 ## Armadilhas a evitar
 
 -   Não passe configurações nativas diretamente em `kafka`, `producer` ou
     `consumer`; use `rdKafka`.
 -   Não suponha que o terceiro argumento de `send()` ainda controla timeout. Ele
-    não produz erro, mas também não altera o comportamento.
+    não produz erro e não altera o comportamento; desde a v2.1.9 a lib emite um
+    `console.warn` na primeira chamada com argumentos extras. Trate esse aviso
+    como item de migração pendente, não como ruído.
 -   Não habilite `fromBeginning: true` sem verificar o impacto de reprocessar o
     histórico do tópico para aquele `groupId`.
 -   Não trate a ausência de `producer.disconnected` como falha de conexão; o
-    evento não é emitido na v2.0.7.
+    evento não é emitido na v2.1.9.
 -   Não use as variáveis de ambiente SASL comentadas no código como interface
     pública. Passe `kafka.sasl` no construtor até que a aplicação tenha uma
     configuração própria e validada para credenciais.
@@ -171,7 +217,7 @@ contadores de saúde, `ready`, `error`, `disconnected`, `producer.ready`,
 ## Checklist executável
 
 -   [ ] Atualizar Node.js para 18 ou superior.
--   [ ] Atualizar a dependência para `@vortus-solutions/kafka-service@2.0.7`.
+-   [ ] Atualizar a dependência para `@vortus-solutions/kafka-service@2.1.9`.
 -   [ ] Buscar `send(` com opções de timeout e mover o valor necessário para
         `producer.timeout`.
 -   [ ] Buscar `sendBatch(` com opções de timeout e fazer a mesma migração.
@@ -180,9 +226,13 @@ contadores de saúde, `ready`, `error`, `disconnected`, `producer.ready`,
 -   [ ] Buscar listeners de `producer.disconnected` e `consumer.disconnected`;
         trocar por `disconnected` quando o objetivo for observar o desligamento
         explícito do serviço.
+-   [ ] Buscar `type === 'consumer_crash'`; substituir por monitoração de
+        `getHealth().partitionsAssigned`.
 -   [ ] Buscar acessos a `message.headers[...]`; torná-los opcionais.
 -   [ ] Remover `createPartitioner`, `enforceRequestTimeout` e `retry.factor` de
         configurações herdadas ou de usos de `KafkaService.DEFAULT_CONFIG`.
 -   [ ] Mover opções nativas para `rdKafka`.
+-   [ ] Rodar a aplicação uma vez e conferir se aparece algum `console.warn` de
+        `[kafka-service]` sobre argumentos ignorados.
 -   [ ] Executar os testes da aplicação e um smoke test real de produzir, consumir
         e desconectar com as credenciais e o cluster de homologação.

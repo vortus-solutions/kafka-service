@@ -1,6 +1,6 @@
-# Referência operacional para IA — Kafka Service v2.0.7
+# Referência operacional para IA — Kafka Service v2.1.9
 
-Este é o contrato operacional de `@vortus-solutions/kafka-service@2.0.7`.
+Este é o contrato operacional de `@vortus-solutions/kafka-service@2.1.9`.
 Use-o para gerar ou revisar código. Para migrar de 1.0.2, consulte também
 [LIB_UPGRADE.md](LIB_UPGRADE.md).
 
@@ -213,7 +213,10 @@ await kafka.send('orders', [
 
 `send(topic, messages)` encaminha `topic` e `messages` ao producer. Em caso de
 sucesso, incrementa `getHealth().messagesSent` pela quantidade de mensagens. O
-terceiro argumento é ignorado; não o use para timeout, acks ou compressão.
+terceiro argumento é ignorado; não o use para timeout, acks ou compressão. Se
+ele for passado, a lib emite um `console.warn` uma única vez por método
+(`send` e `sendBatch` avisam separadamente) e segue com a configuração global do
+producer.
 
 ### Envio em batch para vários tópicos
 
@@ -232,7 +235,8 @@ await kafka.sendBatch([
 
 `sendBatch(batchMessages)` recebe `[{ topic, messages }]`, encaminha como
 `topicMessages` e soma todas as mensagens em `messagesSent`. O batching físico é
-feito pelo `librdkafka`; o método não cria uma transação.
+feito pelo `librdkafka`; o método não cria uma transação. Um segundo argumento é
+ignorado e gera o mesmo `console.warn` descrito em `send()`.
 
 ## Consumer
 
@@ -363,24 +367,64 @@ Tipos de erro possíveis incluem `client_creation_error`, `producer_creation_err
 `batch_processing_error`, `message_consumption_error`, `batch_consumption_error`
 e `disconnect_error`.
 
+Não há evento de crash do consumer. O cliente Confluent não expõe listeners de
+instrumentação, portanto uma parada do loop de consumo não gera `error`. Use
+`getHealth().partitionsAssigned` para detectar esse estado.
+
 ```js
 kafka.on('error', ({ type, error, timestamp }) => {
     logger.error({ type, err: error, timestamp }, 'KafkaService failure');
 });
 
 const health = kafka.getHealth();
-// { connected, messagesSent, messagesReceived,
+// { connected, messagesSent, messagesReceived, partitionsAssigned,
 //   lastProducerError, lastConsumerError, timestamp }
 ```
 
 `lastProducerError` só é preenchido por tipos iniciados por `producer`; o mesmo
 vale para `lastConsumerError` e tipos iniciados por `consumer`.
 
+### Campos de `getHealth()`
+
+| Campo                | Tipo             | Significado                                                     |
+| -------------------- | ---------------- | --------------------------------------------------------------- |
+| `connected`          | boolean          | `true` após `init()`; volta a `false` apenas em `disconnect()`. |
+| `messagesSent`       | number           | Mensagens enviadas com sucesso por `send()` e `sendBatch()`.    |
+| `messagesReceived`   | number           | Mensagens cujo callback de consumo terminou sem lançar.         |
+| `partitionsAssigned` | number ou `null` | Partições atribuídas ao consumer no instante da chamada.        |
+| `lastProducerError`  | objeto ou `null` | Último `error` com `type` iniciado por `producer`.              |
+| `lastConsumerError`  | objeto ou `null` | Último `error` com `type` iniciado por `consumer`.              |
+| `timestamp`          | string ISO       | Momento da chamada a `getHealth()`.                             |
+
+`connected` reflete o ciclo de vida explícito do wrapper, não a saúde do
+consumo: ele continua `true` mesmo se o consumer parar de receber partições.
+
+`partitionsAssigned` (a partir da v2.1.9) lê `consumer.assignment().length` a
+cada chamada. Vale `null` quando o processo não criou consumer (`init(true,
+false)`) ou quando o consumer ainda não está conectado — `null` significa
+"desconhecido", não "zero". Em operação normal o valor fica estável; ele cai a
+`0` apenas durante um rebalance, por poucos milissegundos.
+
+```js
+// Health check de um serviço consumidor.
+app.get('/health', (req, res) => {
+    const { connected, partitionsAssigned } = kafka.getHealth();
+    const ok = connected && partitionsAssigned !== 0;
+    res.status(ok ? 200 : 503).json(kafka.getHealth());
+});
+```
+
+Um único `partitionsAssigned === 0` pode ser um rebalance em curso. Para
+alarmar ou reiniciar, exija leituras consecutivas em zero em vez de agir na
+primeira.
+
 ## Limites do wrapper
 
--   Não há API wrapper para `commitOffsets`, `seek`, `pause`, `resume` ou
-    `assignment`; use `kafka.consumer` depois de `init()` e trate isso como uma
-    integração avançada com o cliente Confluent.
+-   Não há API wrapper para `commitOffsets`, `seek`, `pause` ou `resume`; use
+    `kafka.consumer` depois de `init()` e trate isso como uma integração
+    avançada com o cliente Confluent. De `assignment()` o wrapper expõe apenas a
+    contagem, em `getHealth().partitionsAssigned`; para saber quais tópicos e
+    partições, chame `kafka.consumer.assignment()` diretamente.
 -   `consumeBatch()` não permite trocar `eachBatchAutoResolve` nem configurar
     concorrência por chamada. Para esses controles, use diretamente
     `kafka.consumer.run(...)`; isso não atualiza os contadores de saúde do wrapper.

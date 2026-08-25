@@ -30,13 +30,13 @@ ENV vars override everything. The mapping lives in `kafkaConfig.js` as a flat `e
 
 ```js
 await kafka.init(createProducer?, createConsumer?)
-await kafka.send(topic, messages, options?)
-await kafka.sendBatch(batchMessages, options?)
+await kafka.send(topic, messages)          // extra args ignored → console.warn
+await kafka.sendBatch(batchMessages)       // extra args ignored → console.warn
 await kafka.consumerSubscribe(opts)
 await kafka.consumeEach(callback)
 await kafka.consumeBatch(callback)
 await kafka.disconnect()
-kafka.getHealth()  // → { connected, messagesSent, messagesReceived, lastProducerError, lastConsumerError, timestamp }
+kafka.getHealth()  // → { connected, messagesSent, messagesReceived, partitionsAssigned, lastProducerError, lastConsumerError, timestamp }
 ```
 
 Events emitted: `ready`, `disconnected`, `error`, `producer.connected`, `consumer.connected`.

@@ -15,6 +15,7 @@ jest.mock('@confluentinc/kafka-javascript', () => {
 		disconnect: jest.fn().mockResolvedValue(),
 		subscribe: jest.fn().mockResolvedValue(),
 		run: jest.fn().mockResolvedValue(),
+		assignment: jest.fn(() => []),
 	};
 
 	const mockKafka = {
@@ -589,6 +590,82 @@ describe('KafkaService', () => {
 			await service.send('topic', [{ value: 'a' }, { value: 'b' }]);
 			const health = service.getHealth();
 			expect(health.messagesSent).toBe(2);
+		});
+
+		it('should report partitionsAssigned as null without a consumer', async () => {
+			const service = new KafkaService();
+			await service.init(true, false);
+			expect(service.getHealth().partitionsAssigned).toBeNull();
+		});
+
+		it('should report the number of assigned partitions', async () => {
+			const service = new KafkaService();
+			await service.init(false, true);
+			service.consumer.assignment.mockReturnValue([
+				{ topic: 'orders', partition: 0 },
+				{ topic: 'orders', partition: 1 },
+			]);
+			expect(service.getHealth().partitionsAssigned).toBe(2);
+		});
+
+		it('should report zero when the consumer holds no partitions', async () => {
+			const service = new KafkaService();
+			await service.init(false, true);
+			service.consumer.assignment.mockReturnValue([]);
+			expect(service.getHealth().partitionsAssigned).toBe(0);
+		});
+
+		it('should report null when assignment() throws', async () => {
+			const service = new KafkaService();
+			await service.init(false, true);
+			service.consumer.assignment.mockImplementation(() => {
+				throw new Error('Assignment can only be called while connected.');
+			});
+			expect(service.getHealth().partitionsAssigned).toBeNull();
+		});
+	});
+
+	describe('argumentos ignorados', () => {
+		let warnSpy;
+
+		beforeEach(() => {
+			warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		});
+
+		afterEach(() => {
+			warnSpy.mockRestore();
+		});
+
+		it('should warn when send() receives a third argument', async () => {
+			const service = new KafkaService();
+			await service.init(true, false);
+			await service.send('topic', [{ value: 'a' }], { timeout: 5000 });
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('send()'));
+		});
+
+		it('should warn only once per method', async () => {
+			const service = new KafkaService();
+			await service.init(true, false);
+			await service.send('topic', [{ value: 'a' }], { timeout: 5000 });
+			await service.send('topic', [{ value: 'b' }], { timeout: 5000 });
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should warn when sendBatch() receives a second argument', async () => {
+			const service = new KafkaService();
+			await service.init(true, false);
+			await service.sendBatch([{ topic: 't', messages: [{ value: 'a' }] }], {
+				timeout: 5000,
+			});
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('sendBatch()'));
+		});
+
+		it('should not warn on the documented signatures', async () => {
+			const service = new KafkaService();
+			await service.init(true, false);
+			await service.send('topic', [{ value: 'a' }]);
+			await service.sendBatch([{ topic: 't', messages: [{ value: 'a' }] }]);
+			expect(warnSpy).not.toHaveBeenCalled();
 		});
 	});
 
