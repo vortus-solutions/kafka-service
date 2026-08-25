@@ -208,6 +208,7 @@ The health object includes:
 -   `lastConsumerError`: Details of the last consumer error.
 -   `messagesSent`: Total messages sent.
 -   `messagesReceived`: Total messages received.
+-   `partitionsAssigned`: Number of partitions currently assigned to the consumer, or `null` when there is no connected consumer.
 -   `timestamp`: The current timestamp.
 
 ## Testing

@@ -31,6 +31,9 @@ class KafkaService extends EventEmitter {
 
 		this.config = this._buildConfig(userConfig);
 
+		// Métodos que já avisaram sobre argumentos ignorados (warn-once por método).
+		this._warnedIgnoredArgs = new Set();
+
 		this.health = {
 			connected: false,
 			lastProducerError: null,
@@ -211,6 +214,9 @@ class KafkaService extends EventEmitter {
 	 * @throws {Error} If batch send fails
 	 */
 	async sendBatch(batchMessages) {
+		if (arguments.length > 1) {
+			this._warnIgnoredArgs('sendBatch');
+		}
 		try {
 			const result = await this.producer.sendBatch({
 				topicMessages: batchMessages,
@@ -235,6 +241,9 @@ class KafkaService extends EventEmitter {
 	 * @throws {Error} If send fails
 	 */
 	async send(topic, messages) {
+		if (arguments.length > 2) {
+			this._warnIgnoredArgs('send');
+		}
 		try {
 			const result = await this.producer.send({
 				topic,
@@ -373,12 +382,37 @@ class KafkaService extends EventEmitter {
 	}
 
 	/**
+	 * Warn once per method that extra call arguments are ignored
+	 * @private
+	 * @param {string} method - Method name that received extra arguments
+	 */
+	_warnIgnoredArgs(method) {
+		if (this._warnedIgnoredArgs.has(method)) return;
+		this._warnedIgnoredArgs.add(method);
+		console.warn(
+			`[kafka-service] ${method}() recebeu argumentos extras; eles são ignorados. ` +
+				'Configure timeout/compressão em producer.* no construtor.'
+		);
+	}
+
+	/**
 	 * Get current health status
 	 * @returns {Object} Health status object
 	 */
 	getHealth() {
+		let partitionsAssigned = null;
+		if (this.consumer) {
+			try {
+				// ponytail: assignment() lança se o consumer não está conectado.
+				partitionsAssigned = this.consumer.assignment().length;
+			} catch (error) {
+				partitionsAssigned = null;
+			}
+		}
+
 		return {
 			...this.health,
+			partitionsAssigned,
 			timestamp: new Date().toISOString(),
 		};
 	}
